@@ -349,9 +349,8 @@ __global__ __launch_bounds__(1024, 1) void dispatch(
 #ifdef PER_EXPERT_BATCHING
   // Grid-wide sync before batch-send.
 #if defined(__HIP_PLATFORM_AMD__) || defined(__HIPCC__)
-  // Reset counter after sync so send-only launches (return_recv_hook) do not
-  // leave a stale value that deadlocks the next dispatch.
-  amd::grid_sync_then_zero(grid_sync_barrier_ptr, num_sms);
+  // Each reset counter is used once per kernel so every CTA can observe zero.
+  amd::grid_sync_then_zero(grid_sync_barrier_ptr + 1, num_sms);
 #else
   cg::this_grid().sync();
 #endif
@@ -685,7 +684,7 @@ void dispatch(void* packed_recv_x, void* packed_recv_x_scales,
   auto atomic_send_counter_per_expert =
       atomic_finish_counter_per_expert + num_experts;
   auto grid_sync_barrier_ptr = atomic_send_counter_per_expert + num_experts;
-  EP_HOST_ASSERT((num_experts * 3 + 1) * sizeof(int) <= NUM_WORKSPACE_BYTES);
+  EP_HOST_ASSERT((num_experts * 3 + 2) * sizeof(int) <= NUM_WORKSPACE_BYTES);
 #else
   auto atomic_send_counter_per_expert =
       atomic_finish_counter_per_expert + num_experts;  // Unused in legacy path.
